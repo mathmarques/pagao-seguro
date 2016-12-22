@@ -1,0 +1,98 @@
+#!/usr/bin/env php
+<?php
+
+$publicHash = '2fae44391b33d0ac0cc8a9917b3b71bbd648498426cc74737a81f2f445927eca';
+$privateHash = '278edf3b57a7cf8ab9178ee46ffa2fc143c169354836bff0ede95b7a6641d0e7';
+$apiUrl = 'https://pagaoseguro.matheusmarques.com/api/transaction';
+
+function prettyPrint( $json )
+{
+    $result = '';
+    $level = 0;
+    $in_quotes = false;
+    $in_escape = false;
+    $ends_line_level = NULL;
+    $json_length = strlen( $json );
+
+    for( $i = 0; $i < $json_length; $i++ ) {
+        $char = $json[$i];
+        $new_line_level = NULL;
+        $post = "";
+        if( $ends_line_level !== NULL ) {
+            $new_line_level = $ends_line_level;
+            $ends_line_level = NULL;
+        }
+        if ( $in_escape ) {
+            $in_escape = false;
+        } else if( $char === '"' ) {
+            $in_quotes = !$in_quotes;
+        } else if( ! $in_quotes ) {
+            switch( $char ) {
+                case '}': case ']':
+                    $level--;
+                    $ends_line_level = NULL;
+                    $new_line_level = $level;
+                    break;
+
+                case '{': case '[':
+                    $level++;
+                case ',':
+                    $ends_line_level = $level;
+                    break;
+
+                case ':':
+                    $post = " ";
+                    break;
+
+                case " ": case "\t": case "\n": case "\r":
+                    $char = "";
+                    $ends_line_level = $new_line_level;
+                    $new_line_level = NULL;
+                    break;
+            }
+        } else if ( $char === '\\' ) {
+            $in_escape = true;
+        }
+        if( $new_line_level !== NULL ) {
+            $result .= "\n".str_repeat( "\t", $new_line_level );
+        }
+        $result .= $char.$post;
+    }
+
+    return $result;
+}
+
+ini_set("display_errors", 1);
+error_reporting(E_ALL);
+
+$token = (isset($argv[1])? $argv[1] : '');
+$value = (isset($argv[2])? $argv[2] : 99);
+
+$body = json_encode(['token' => $token, 'value' => $value]);
+
+$hash = hash_hmac('sha256', $body, $privateHash);
+
+$headers = array(
+    'X-API-Public: '.$publicHash,
+    'X-API-Hash: '.$hash,
+    'Content-Type: application/json'
+);
+
+$f = fopen('request.txt', 'w');
+
+$ch = curl_init();
+curl_setopt($ch, CURLOPT_URL, $apiUrl); 
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+curl_setopt($ch, CURLOPT_POST, true);
+curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+curl_setopt($ch, CURLOPT_VERBOSE, true);
+curl_setopt($ch, CURLOPT_STDERR, $f);
+$api = curl_exec($ch); 
+
+echo PHP_EOL;
+echo "Request Body:" . PHP_EOL;
+echo prettyPrint($body).PHP_EOL.PHP_EOL;
+echo "Response Body:" .prettyPrint($api).PHP_EOL.PHP_EOL;
+
+curl_close($ch);
